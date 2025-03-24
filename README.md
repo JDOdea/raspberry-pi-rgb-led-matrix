@@ -319,4 +319,4 @@ In general, run a minimal configuration on your Pi.
 
     * More recent versions of Raspbian Lite result in some faint brightness fluctuations of the displays and it isn't quite clear why.
 
-The default install of 
+The default install of  
