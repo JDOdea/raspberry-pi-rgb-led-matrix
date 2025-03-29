@@ -323,3 +323,5 @@ The default install of **[Raspbian Lite][raspbian-lite]** or **[DietPi]** seem t
 
 ### Bad interaction with Sound
 If sound is enabled on your Pi, this will not work together with the LED matrix, as both need the same internal hardware sub-system (a first test to see if you are affected is to run the program with `--led-no-hardware-pulse` and see if things work fine then).
+
+If you run `lsmod` and see the `snd_bcm2835` module, this could be causing trouble. (The library actually exits if it finds this module to be loaded).
