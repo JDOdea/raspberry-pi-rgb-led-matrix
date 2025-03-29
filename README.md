@@ -321,3 +321,5 @@ In general, run a minimal configuration on your Pi.
 
 The default install of **[Raspbian Lite][raspbian-lite]** or **[DietPi]** seem to be good starting points, as they have a reasonably minimal configuration to begin with. Raspbian Lite is not as lite as it used to be.
 
+### Bad interaction with Sound
+If sound is enabled on your Pi, this will not work together with the LED matrix, as both need the same internal hardware sub-system (a first test to see if you are affected is to run the program with `--led-no-hardware-pulse` and see if things work fine then).
