@@ -325,3 +325,160 @@ The default install of **[Raspbian Lite][raspbian-lite]** or **[DietPi]** seem t
 If sound is enabled on your Pi, this will not work together with the LED matrix, as both need the same internal hardware sub-system (a first test to see if you are affected is to run the program with `--led-no-hardware-pulse` and see if things work fine then).
 
 If you run `lsmod` and see the `snd_bcm2835` module, this could be causing trouble. (The library actually exits if it finds this module to be loaded).
+
+In that case, you should create a kernel module blacklist file like the following on your system and update your initramfs:
+
+```
+cat <<EOF | sudo tee /etc/modprobe.d/blacklist-rgb-matrix.conf
+blacklist snd_bcm2835
+EOF
+
+sudo update-initramfs -u
+```
+
+Reboot and confirm that the module is not loaded.
+
+### I have followed some tutorial on the Internet and it doesn't work
+
+If you use this library, please read the documentation provided _here_, not on some other website. Most important to get started with is the [wiring guide](./wiring.md). 
+
+### I have a Pi1 Revision1 and top part of Panel doesn't show green
+
+Use `--led-gpio-mapping=regular-pi1`
+
+### Logic level voltage not sufficient
+Some panels don't interpret the 3.3V logic level well, or the RPi output drivers have trouble driving longer cables, in particular with faster Raspberry Pis Version 2. This results in artifacts like randomly showing up pixels, color fringes, or parts of the panel showing 'static'.
+
+If you encounter this, try these things:
+
+   - Make sure to have as short as possible flat-cables connecting your
+     Raspberry Pi with the LED panel.
+
+   - In particular if the chips close to the input of the LED panel
+     read 74HC245 instead of 74HCT245 or 74AHCT245, then this board will not
+     work properly with 3.3V inputs coming from the Pi.
+     Use an [adapter board](./adapter/active-3) with a bus-driver that acts as
+     level shifter between 3.3V and 5V.
+     (In any case, it is always a good idea to use the level shifters).
+
+   - A temporary hack to make HC245 inputs work with the 3.3V levels is to
+     supply only like 4V to the LED panel. But the colors will be off, so not
+     really useable as long-term solution.
+
+   - If you can't implement the above things, or still have problems, you can
+     slow down the GPIO writing a bit. This will of course reduce the
+     frame-rate, so it comes at a cost.
+
+For GPIO slow-down, add the flag `--led-slowdown-gpio=2` to the invocation of the binary.
+
+If you have an Adafruit HAT or Bonnet
+---------------------------
+
+Generally, if you want to connect RGB panels via an adapter instead of hand-wiring, I suggest to build one of the adapters whose open-hardware files you find in the [adapter/](./adapter) subdirectory. It is a fun solder exercise with large surface mount components.
+
+However, Adafruit [offers an adapter][adafruit-hat] which is already ready-made, but it only allows for a single chain. If the ready-made vs. single-chain tradeoff is worthwhile, then you might go for that.
+
+### Switch the Pinout
+
+The Adafruit HAT/Bonnet uses this library but a modified pinout to support other features on the HAT. You can choose the Adafruit pinout with a command line flag.
+
+Just pass the option `--led-gpio-mapping=adafruit-hat`. This works on the C++ and Python examples.
+
+### Improving flicker
+
+To improve flicker, we need to do a very simple hardware modification: solder a wire between GPIO 4 and 18 as shown in the following picture (click to enlarge):
+
+<a href="img/adafruit-mod.jpg"><img src="img/adafruit-mod.jpg" height="80px"></a>
+
+Then, start your programs with `--led-gpio-mapping=adafruit-hat-pwm`.
+
+Now you should have less visible flicker. This essentially switches on the hardware pulses feature for the Adafruit HAT/Bonner.
+
+### 64x64 with E-line on Adafruit HAT/Bonnet
+There are LED panels that have 64x64 LEDs packed, but they need 5 address lines, which is 1:32 multiplexing (they have an `E` address-line). The first generation of the Adafruit HAT/Bonnet was not prepared for this, but it can be done with another hardware mod. Beginning October 2018, Adafruit began selling an updated version of the HAT that supports 64x64 panels simply by bridging two pads on the PCB with solder.
+
+You can identify which HAT you have by looking for the **Address E** pads, circled here:
+
+<a href="https://cdn-learn.adafruit.com/assets/assets/000/063/005/original/led_matrices_addr-e-pad.jpg" target="_blank"><img src="https://cdn-learn.adafruit.com/assets/assets/000/063/005/original/led_matrices_addr-e-pad.jpg" height=80></a>
+
+### New Adagruit RGB Matrix Hat (with Address E pads)
+
+Look for the Address E pads located between the HUB75 connector and Pi camera cutout.
+
+Mult a blob of solder between the center "E" pad and the "8" pad just above it (for 64x64 matrices in the Adafruit shop)…*_or_* the "16" pad below (rare, for some third-party 64x64 matrices_check datasheet).
+
+### Old Adafruit HAT/Bonnet (without)
+
+It is a little more advanced hack, so it is only really for people who are comfortable with this kind of thing.
+First, you have to figure out which is the input of the E-Line on your matrix (they seem to be either on Pin 4 or Pin 8 of the IDC connector). You need to disconnect that Pin from the ground plane (e.g. with an Exacto knife) and connect GPIO 24 to it. The following images illustrate the case for IDC Pin 4.
+
+<a href="img/adafruit-64x64-front.jpg"><img src="img/adafruit-64x64-front.jpg" height="80px"></a>
+<a href="img/adafruit-64x64-back.jpg"><img src="img/adafruit-64x64-back.jpg" height="80px"></a>
+
+If the direct connection does not work, you need to send it through a free level converter of the Adafruit HAT/Bonnet. Since all unused inputs are grounded with traces under the chip, this involves lifting a leg from the HCT245 (figure out a free bus driver from the schematic). If all of the above makes sense to you, you have the ability to do it.
+
+It might be more convenient at this point to consider the [Active3 adapter](./adapter/active-3) that has that already covered.
+
+Running as root
+---------------
+The library requires access to hardware registers to control the LED matrix and to create accurate timings. These hardware accesses require to run as root user.
+
+For security reasons, it is usually not a good idea to run an application as root entirely, so this library makes sure to drop privileges immediately after the hardware is initialized.
+
+You can switch off the privilege dropping with the [`--led-no-drop-privs`](#user-content-no-drop-priv) flag, or, if you do this programmatically, choose the configuration in the ['RuntimeOptions struct'](https://github.com/hzeller/rpi-rgb-led-matrix/blob/master/include/led-matrix.h#L401).
+
+Note, you _could_ run as non-root, which will use `/dev/gpiomem` to at least write to GPIO, however the precise timing hardware registers are not accessible. This will result in flicker and color degradation. Starting as non-root is not recommended.
+
+CPU use
+-------
+
+These displays need to be updated constantly to show an image with PWMed LEDs. This is dependent on the length of the chain: for each chain element, about 1'000'000 write operations have to happen every second! (chain_length * 32 pixel long * 16 rows * 11 bit planes * 180 Hz refresh rate).
+
+We can't use hardware support for writing these as DMA is too slow, thus the constant CPU use on an RPi is roughly 30-40% of one core. Keep that in mind if you plan to run other things on this computer (This is less noticable on Raspberry Pi, Version 2 or 3 that has more cores).
+
+Also, the output quality is susceptible to other heavy tasks running on that computer - there might be changes in the overall brightness when this affects the refresh rate.
+
+If you have a loaded system and one of the newer Pis with 4 cores, you can reserve one core just for the refresh of the display. Add:
+
+```
+isolcpus=3
+```
+
+to the end of the line in `/boot/cmdline.txt` (pre-bookworm) or `boot/firmware/cmdline.txt` (post-bookworm). It needs to be in the same line as the existing arguments -- no newline. This will use the last core only to refresh the display then, but it also means that no other process can utilize it then.
+
+Performance improvements and limits
+-----------------------------------
+Regardless of which driving hardware you use, ultimately you can only push pixels so fast to a string of panels before you get flickering due to too low a refresh rate (less than 80-100Hz), or before you refresh the panel lines too fast and they appear too dim because each line is not displayed long enough before it is turned off.
+
+Basic performance tips:
+- Use --led-show-refresh to see the refresh rate while you try parameters
+- use an active-3 board with led-parallel=3
+- led-pwm-dither-bits=1 gives you a speed boost but less brightness
+- led-pwm-lsb-nanoseconds=50 also gives you a speed boost but less brightness
+- led-pwm-bits=7 or even lower decrease color depth but increases refresh speed
+- AB panels and other panels with that use values of led-multiplexing bigger than 0,
+will also go faster, although as you tune more options given above, their advantage will decrease.
+- 32x16 ABC panels are faster than ABCD which are faster than ABCDE, which are faster than 128x64 ABC panels
+(which do use 5 address lines, but over only 3 wires)
+- Use at least an rPi3 (rPi4 is still slightly faster but may need --led-slowdown-gpio=2)
+
+Maximum resolutions reasonably achievable:
+A general rule of thumb is that running 16K pixels (128x128 or otherwise) on a single chain is already pushing limits and you will have to make tradeoffs in visual quality. 32K pixels (like 128x256) is definitely pushing things and you'll have to make tradeoffs in visual quality. 32K pixels (like 128x256) is definitely pushing things and you'll get 100Hz or less depending on the performance options you choose.
+This puts the maximum reasonable resolution around 100K pixels (like 384x256) for 3 chains.
+You can see more examples and video capture of speed on [Marc MERLIN's page 'RGB Panels, from 192x80, to 384x192, to 384x256 and maybe not much beyond'](http://marc.merlins.org/perso/arduino/post_2020-03-13_RGB-Panels_-from-192x80_-to-384x192_-to-384x256-and-maybe-not-much-beyond.html)
+If your refresh rate is below 300Hz, expect likely black bars when taking cell phone pictures.
+A real camera with shutter speed lowered accordingly will get around this.
+
+Ultimately, you should not expect to go past 64K pixels using 3 chains without significant quality tradeoffs. If you need bigger displays, you should use multiple boards and synchronize the output.
+
+Limitations
+-----------
+If you are using the Adafruit HAT/Bonnet in the default configuration, then we can't make use of the PWM hardware (which only outputs to a particular pin), so you'll see random brightness glitches. I strongly suggest to do the aforementioned hardware mod.
+
+The system needs constant CPU to update the display. Using the DMA controller was considered but after experiments, was dropped due to slow speed.
+
+There is an upper limit in how fast the GPIO pins can be controlled, which limits the frame-rate. Raspberry Pi 2's and newer are generally faster.
+
+Even with everything in place, you might see faint brightness fluctuations in particular if there is something going on in the network or in a terminal on the Pi; this could probably be mitigated with some more real-time kernel for the Pi; maybe there are also hardware limitations (memory bus contention?).
+
+To address the brightness fluctuations, you might experiment with the `FIXED_FRAME_MICROSECONDS` compile time option in [lib/Makefile](lib/MakeFile) that has instructions on how to set it up.
